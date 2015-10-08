@@ -1,0 +1,8 @@
+# Routes
+
+GET      /api/cars/:sort   controllers.CarsCtrl.list(sort: String)
+GET      /api/cars/:id     controllers.CarsCtrl.get(id: Int)
+PUT      /api/cars/:id     controllers.CarsCtrl.modify(id: Int)
+POST     /api/cars         controllers.CarsCtrl.add
+DELETE   /api/cars/:id     controllers.CarsCtrl.delete(id : Int)
+
