@@ -50,10 +50,14 @@ class CarsDAO() extends HasDatabaseConfig[JdbcProfile] {
     runValidatedCar[Car](car, cars returning cars.map(_.id) into ((c, id) => c.copy(id = id)) += car) // returned car contains now id
 
   def modify(id: Int, car: Car): Future[Boolean] =
-    runValidatedCar[Int](car, cars.filter(_.id === id).update(car.copy(id = Some(id)))) map { validateFound(id) }
+    runValidatedCar[Int](car, cars.filter(_.id === id).update(car.copy(id = Some(id)))) map {
+      validateFound(id)
+    }
 
   def delete(id: Int): Future[Boolean] =
-    db.run(cars.filter(_.id === id).delete) map { validateFound(id) }
+    db.run(cars.filter(_.id === id).delete) map {
+      validateFound(id)
+    }
 
   private def runValidatedCar[R](car: Car, runable: DBIOAction[R, NoStream, Nothing]): Future[R] = {
     val usedValid =
@@ -62,12 +66,15 @@ class CarsDAO() extends HasDatabaseConfig[JdbcProfile] {
       else
         true
 
-    val fuelValid = Await.result(db.run(fuel.filter(_.name === car.fuel).result.headOption.map(_.isDefined)), 1 seconds)
+    for {
+      fuelValid <- db.run(fuel.filter(_.name === car.fuel).result.headOption.map(_.isDefined))
+      result <-
+      if (usedValid && fuelValid)
+        db.run(runable)
+      else
+        Future.failed(new ServerException(BadRequest(s"""Not valid""")))
 
-    if (usedValid && fuelValid)
-      db.run(runable)
-    else
-      Future.failed(new ServerException(BadRequest(s"""Not valid""")))
+    } yield result
   }
 
   private def validateFound(id: Int)(count: Int): Boolean = {
@@ -93,25 +100,32 @@ class CarsDAO() extends HasDatabaseConfig[JdbcProfile] {
   private class CarsTable(tag: Tag) extends Table[Car](tag, "CAR") {
 
     def id = column[Option[Int]](Columns.id, O.AutoInc, O.PrimaryKey)
+
     def title = column[String](Columns.title)
+
     def fuel = column[String](Columns.fuel)
+
     def price = column[Int](Columns.price)
+
     def `new` = column[Boolean](Columns.`new`)
+
     def mileage = column[Option[Int]]("mileage")
+
     def firstRegistration = column[Option[DateTime]](Columns.firstRegistration)
+
     def * = (id, title, fuel, price, `new`, mileage, firstRegistration) <> (Car.tupled, Car.unapply)
   }
 
   private def sortedCars(sort: Option[String]) = {
     if (sort.isDefined) {
       sort.get match {
-        case Columns.id                => cars.sortBy(_.id)
-        case Columns.title             => cars.sortBy(_.title)
-        case Columns.fuel              => cars.sortBy(_.fuel)
-        case Columns.`new`             => cars.sortBy(_.`new`)
-        case Columns.mileage           => cars.sortBy(_.mileage)
+        case Columns.id => cars.sortBy(_.id)
+        case Columns.title => cars.sortBy(_.title)
+        case Columns.fuel => cars.sortBy(_.fuel)
+        case Columns.`new` => cars.sortBy(_.`new`)
+        case Columns.mileage => cars.sortBy(_.mileage)
         case Columns.firstRegistration => cars.sortBy(_.firstRegistration)
-        case _                         => cars.sortBy(_.id) // maybe an exception should be thrown
+        case _ => cars.sortBy(_.id) // maybe an exception should be thrown
       }
     } else {
       cars
@@ -120,10 +134,14 @@ class CarsDAO() extends HasDatabaseConfig[JdbcProfile] {
 
   private val Fuel = TableQuery[FuelTable]
 
-  def fuelExists(name: String): Future[Boolean] = db.run(Fuel.filter(_.name === name).result).map { _.toList.nonEmpty }
+  private def fuelExists(name: String): Future[Boolean] = db.run(Fuel.filter(_.name === name).result).map {
+    _.toList.nonEmpty
+  }
 
   private class FuelTable(tag: Tag) extends Table[(String)](tag, "FUEL") {
     def name = column[String]("name", O.PrimaryKey)
+
     def * = (name)
   }
+
 }
